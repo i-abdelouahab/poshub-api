@@ -9,9 +9,16 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi (>=0.115.14,<0.116.0)",
-    "uvicorn (>=0.35.0,<0.36.0)"
+    "uvicorn (>=0.35.0,<0.36.0)",
+    "pytest (>=8.4.1,<9.0.0)",
+    "pytest-cov (>=6.2.1,<7.0.0)"
 ]
 
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "--cov=poshub_api --cov-report=term-missing -ra"
+testpaths = ["tests"]
+python_files = "test_*.py"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

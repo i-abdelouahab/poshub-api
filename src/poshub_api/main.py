@@ -1,4 +1,4 @@
-
+"""The main entry point for the poshub API."""
 
 from fastapi import FastAPI
 
