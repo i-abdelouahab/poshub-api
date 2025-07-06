@@ -1,6 +1,7 @@
 """This class represents the Order service."""
 
 from datetime import datetime
+from typing import Dict, Optional
 from uuid import UUID, uuid4
 
 from poshub_api.domain.models import OrderIn, OrderOut
@@ -14,14 +15,17 @@ class OrderService:
         """Initialize the Order service."""
         self.orders = {}
 
-    def create_order(self, order_in: OrderIn) -> OrderOut:
+    def create_order(
+        self, order_in: OrderIn, user_context: Optional[Dict] = None
+    ) -> OrderOut:
         """Create a new order."""
         order = OrderOut(
-            order=uuid4(),
+            order_id=uuid4(),
             created_at=datetime.utcnow(),
             nom_client=order_in.customer_name,
             montant=order_in.total_amount,
             devise=order_in.currency,
+            created_by=user_context.get("sub") if user_context else None,
         )
         self.orders[order.order_id] = order
         return order
