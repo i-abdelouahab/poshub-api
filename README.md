@@ -15,13 +15,13 @@ A minimal and extensible FastAPI service for managing orders with internal/exter
 ### 🔧 Install dependencies
 
 ```bash
-poetry install
+poetry 
 ```
 
 ### ▶️ Run locally (development)
 
 ```bash
-poetry run uvicorn poshub_api.main:app --reload --app-dir src
+poetry run uvicorn poshub_api.main:app --reload
 ```
 
 Visit: [http://localhost:8000/health](http://localhost:8000/health)

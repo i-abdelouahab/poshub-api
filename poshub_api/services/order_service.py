@@ -14,14 +14,14 @@ class OrderService:
         """Initialize the Order service."""
         self.orders = {}
 
-    def create_order(self, order: OrderIn) -> OrderOut:
+    def create_order(self, order_in: OrderIn) -> OrderOut:
         """Create a new order."""
         order = OrderOut(
-            order_id=uuid4(),
+            order=uuid4(),
             created_at=datetime.utcnow(),
-            customer_name=order.customer_name,
-            total_amount=order.total_amount,
-            currency=order.currency,
+            nom_client=order_in.customer_name,
+            montant=order_in.total_amount,
+            devise=order_in.currency,
         )
         self.orders[order.order_id] = order
         return order
@@ -29,7 +29,7 @@ class OrderService:
     def get_order_by_id(self, order_id: UUID) -> OrderOut:
         """Return the order by id."""
         order = self.orders.get(order_id)
-        if order is None:
+        if not order:
             raise NotFoundError(f"Order {order_id} not found")
         else:
             return order

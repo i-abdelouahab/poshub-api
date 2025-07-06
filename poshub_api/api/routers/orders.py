@@ -1,27 +1,38 @@
-from http.client import HTTPException
+from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from poshub_api.domain.models import OrderIn, OrderOut
 from poshub_api.services.order_service import OrderService
 from poshub_api.shared.dependencies import get_order_service
+from poshub_api.shared.exceptions import NotFoundError
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
 
-@router.post("/order", response_model=OrderOut)
+@router.post("/create", response_model=OrderOut)
 async def create_order(
     order: OrderIn, service: OrderService = Depends(get_order_service)
 ):
-    return service.create(order)
+    return service.create_order(order)
+
+
+@router.get("/all", response_model=List[OrderOut])
+async def get_orders(
+    service: OrderService = Depends(get_order_service),
+) -> List[OrderOut]:
+    try:
+        return list(service.orders.values())
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=e.message)
 
 
 @router.get("/{id}", response_model=OrderOut)
 async def get_order(
-    order_id: UUID, service: OrderService = Depends(get_order_service)
+    id: UUID, service: OrderService = Depends(get_order_service)
 ) -> OrderOut:
     try:
-        service.get_order_by_id(order_id)
-    except OrderOut.DoesNotExist as e:
+        return service.get_order_by_id(id)
+    except NotFoundError as e:
         raise HTTPException(status_code=404, detail=e.message)
