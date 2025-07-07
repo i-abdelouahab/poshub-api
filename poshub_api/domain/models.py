@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, StrictFloat, StrictStr
@@ -17,3 +17,4 @@ class OrderOut(BaseModel):
     customer_name: Annotated[StrictStr, Field(alias="nom_client")]
     total_amount: Annotated[StrictFloat, Field(alias="montant")]
     currency: Annotated[StrictStr, Field(alias="devise")]
+    created_by: Optional[str]

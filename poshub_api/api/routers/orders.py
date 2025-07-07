@@ -1,3 +1,4 @@
+import logging
 from typing import List
 from uuid import UUID
 
@@ -7,7 +8,7 @@ from poshub_api.domain.models import OrderIn, OrderOut
 from poshub_api.services.order_service import OrderService
 from poshub_api.shared.dependencies import get_order_service
 from poshub_api.shared.exceptions import NotFoundError
-from poshub_api.shared.security import validate_token
+from poshub_api.shared.security import check_scopes
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -16,15 +17,18 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 async def create_order(
     order: OrderIn,
     service: OrderService = Depends(get_order_service),
-    token_payload: dict = Depends(
-        lambda: validate_token(required_scope="orders:write")
-    ),
+    token_payload: dict = Depends(check_scopes(required_scope="orders:write")),
 ) -> OrderOut:
     """
     Create a new order.
     Requires 'orders:write' scope in the JWT token.
+
+    Error Responses:
+    - 401: Invalid or missing authentication token
+    - 403: Authenticated but missing required scope
     """
-    return await service.create_order(order, user_context=token_payload)
+    logging.info(token_payload)
+    return service.create_order(order, user_context=token_payload)
 
 
 @router.get("/all", response_model=List[OrderOut])

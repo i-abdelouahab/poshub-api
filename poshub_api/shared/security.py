@@ -1,12 +1,12 @@
-from multiprocessing.context import AuthenticationError
-from typing import Optional
+from typing import List, Optional
 
 import jwt
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jwt import PyJWTError
 from pydantic.v1 import BaseSettings
 
-from poshub_api.shared.exceptions import ScopeError
+from poshub_api.shared.exceptions import AuthError, ScopeError
 
 
 class JWTSettings(BaseSettings):
@@ -15,12 +15,10 @@ class JWTSettings(BaseSettings):
     jwt_secret: str
     jwt_algorithm: str = "HS256"
     jwt_issuer: str = "poshub-api"
+    jwt_audience: str
 
     class Config:
         env_file = ".env"
-
-
-security_scheme = HTTPBearer(auto_error=False)
 
 
 def get_jwt_settings() -> JWTSettings:
@@ -28,15 +26,13 @@ def get_jwt_settings() -> JWTSettings:
     return JWTSettings()
 
 
-def validate_token(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
-    required_scope: Optional[str] = None,
-    required_scopes: Optional[str] = None,
-) -> dict:
-    """Validate token."""
-    if credentials is None:
-        raise AuthenticationError("No credentials provided")
+security_scheme = HTTPBearer()
 
+
+def validate_token(
+    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
+) -> dict:
+    """Base token validation"""
     jwt_settings = get_jwt_settings()
 
     try:
@@ -45,22 +41,26 @@ def validate_token(
             token,
             jwt_settings.jwt_secret,
             algorithms=[jwt_settings.jwt_algorithm],
-            issuers=jwt_settings.jwt_issuer,
+            iss=jwt_settings.jwt_issuer,
             options={"verify_exp": True},
         )
+        return payload
+    except PyJWTError as e:
+        raise AuthError(f"Invalid token: {str(e)}")
 
-        # handle both single and multiple scopes
+
+def check_scopes(
+    required_scope: Optional[str] = None, required_scopes: Optional[List[str]] = None
+):
+    """Factory for scope checking"""
+
+    def dependency(payload: dict = Depends(validate_token)):
         if required_scope and required_scope not in payload.get("scopes", []):
             raise ScopeError(required_scope)
-
         if required_scopes and not any(
-            scope in payload.get("scopes", []) for scope in required_scopes
+            s in payload.get("scopes", []) for s in required_scopes
         ):
             raise ScopeError(", ".join(required_scopes))
-
         return payload
 
-    except jwt.ExpiredSignatureError:
-        raise AuthenticationError("Token has expired")
-    except jwt.InvalidTokenError as e:
-        raise AuthenticationError(f"Invalid token: {str(e)}") from e
+    return dependency

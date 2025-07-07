@@ -20,7 +20,7 @@ class OrderService:
     ) -> OrderOut:
         """Create a new order."""
         order = OrderOut(
-            order_id=uuid4(),
+            order=uuid4(),
             created_at=datetime.utcnow(),
             nom_client=order_in.customer_name,
             montant=order_in.total_amount,
