@@ -146,6 +146,18 @@ src/
 
 ---
 
+## OpenAPI JSON
+
+```clickhouse
+# For the raw JSON schema
+http://localhost:8000/openapi.json
+```
+
+```clickhouse
+# For Swagger UI (human-readable)
+http://localhost:8000/docs
+```
+
 ## 🧹 Linting & Formatting
 
 Install pre-commit hooks (auto-format on commit):
