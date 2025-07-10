@@ -1,0 +1,21 @@
+{
+  "version": "2.0",
+  "routeKey": "$default",
+  "rawPath": "/health",
+  "rawQueryString": "",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "requestContext": {
+    "http": {
+      "method": "GET",
+      "path": "/health",
+      "protocol": "HTTP/1.1",
+      "sourceIp": "127.0.0.1",
+      "userAgent": "SAM-CLI"
+    },
+    "requestId": "12345678-1234-1234-1234-123456789012"
+  },
+  "body": null,
+  "isBase64Encoded": false
+}

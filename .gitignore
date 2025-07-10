@@ -10,3 +10,9 @@ __pycache__/
 # Environment variables
 .env
 *.env
+
+# aws sam
+.aws-sam/
+
+# layer for lambda function dependencies
+layer

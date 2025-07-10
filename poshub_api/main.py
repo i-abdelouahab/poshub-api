@@ -1,13 +1,13 @@
 """The main entry point for the poshub API."""
 
 from contextlib import asynccontextmanager
-from typing import Dict, List
+from typing import Dict
 
 import httpx
 import structlog
 from fastapi import FastAPI, status
 from fastapi.openapi.utils import get_openapi
-from pydantic.v1 import BaseSettings
+from mangum import Mangum
 from starlette.responses import JSONResponse
 
 from poshub_api.api.routers import basics, externals, orders
@@ -23,28 +23,6 @@ from poshub_api.shared.middleware import correlation_id_middleware
 logger = structlog.get_logger(__name__)
 
 
-class AppConfig(BaseSettings):
-    """Application configuration model."""
-
-    title: str
-    version: str
-    description: str
-    servers: List[Dict]
-    contact: Dict
-    debug: bool
-    cors_origins: List[str] = []
-    enable_docs: bool
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        env_prefix = "POSHUB_"
-
-
-def get_app_config() -> AppConfig:
-    return AppConfig()
-
-
 def custom_openapi(app: FastAPI) -> Dict:
     """Generate custom OpenAPI schema with security requirements.
 
@@ -55,13 +33,14 @@ def custom_openapi(app: FastAPI) -> Dict:
         return app.openapi_schema
 
     try:
-        app_config = get_app_config()
         openapi_schema = get_openapi(
-            title=app_config.title,
-            version=app_config.version,
-            description=app_config.description,
+            title="Poshub API",
+            version="1.0.0",
+            description="API for Poshub Point of Sale System",
             routes=app.routes,
-            servers=app_config.servers,
+            servers=[
+                {"url": "http://localhost:8000", "description": "Local development"},
+            ],
         )
 
         # Add security schemes
@@ -131,8 +110,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
-    app_config = get_app_config()
-    configure_logging(app_config.debug)
+    configure_logging()
     app = FastAPI(lifespan=lifespan)
 
     # Configure components
@@ -148,3 +126,5 @@ def create_app() -> FastAPI:
 
 # Create application
 app: FastAPI = create_app()
+
+handler = Mangum(app)

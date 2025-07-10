@@ -3,17 +3,16 @@ import logging
 import structlog
 
 
-def configure_logging(debug: bool = False) -> None:
+def configure_logging() -> None:
     """Configure structured logging for the application.
 
     Args:
         debug: Whether to enable debug logging.
     """
-    logging_level = logging.DEBUG if debug else logging.INFO
 
     logging.basicConfig(
         format="%(message)s",
-        level=logging_level,
+        level=logging.INFO,
         handlers=[logging.StreamHandler()],
     )
 
@@ -27,10 +26,7 @@ def configure_logging(debug: bool = False) -> None:
         structlog.processors.format_exc_info,
     ]
 
-    if debug:
-        processors.append(structlog.dev.ConsoleRenderer())
-    else:
-        processors.append(structlog.processors.JSONRenderer())
+    processors.append(structlog.processors.JSONRenderer())
 
     structlog.configure(
         processors=processors,

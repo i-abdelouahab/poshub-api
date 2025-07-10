@@ -1,0 +1,83 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SAM template for Poshub API with HTTP API Gateway integration
+
+Globals:
+  Function:
+    Timeout: 30
+    Runtime: python3.12
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        STAGE: !Ref Stage
+        LOG_LEVEL: INFO
+        API_KEY_PARAM: /pos/api-key
+
+Resources:
+  PosHubFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: PosHubFunction
+      Handler: poshub_api.main.handler
+      CodeUri: .
+      Layers:
+        - !Ref FastApiLayer
+      Events:
+        HttpApiEvent:
+          Type: HttpApi
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+            TimeoutInMillis: 30000
+      Role: arn:aws:iam::471448382724:role/poshub-lambda-role
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: /pos/api-key
+
+  FastApiLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: poshub-deps
+      Description: Layer for FastAPI dependencies
+      ContentUri: layer.zip
+      CompatibleRuntimes:
+        - python3.12
+      RetentionPolicy: Retain
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Stage
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 100
+        ThrottlingRateLimit: 50
+      CorsConfiguration:
+        AllowOrigins:
+          - "'*'"
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    Description: Deployment stage (dev/staging/prod)
+
+Outputs:
+  ApiEndpoint:
+    Description: "HTTP API Gateway endpoint URL"
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
+  LambdaFunction:
+    Description: "Lambda Function ARN"
+    Value: !GetAtt PosHubFunction.Arn
+  LayerVersionArn:
+    Description: "FastAPI Layer Version ARN"
+    Value: !Ref FastApiLayer

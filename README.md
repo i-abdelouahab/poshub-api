@@ -148,15 +148,11 @@ src/
 
 ## OpenAPI JSON
 
-```clickhouse
+```bash
 # For the raw JSON schema
 http://localhost:8000/openapi.json
 ```
 
-```clickhouse
-# For Swagger UI (human-readable)
-http://localhost:8000/docs
-```
 
 ## 🧹 Linting & Formatting
 
@@ -183,3 +179,14 @@ Included tools:
 ## 📄 License
 
 MIT – see `LICENSE` file.
+
+## SAM Build
+
+```bash
+sam build --template-file sam-min.yaml 
+```
+
+## SAM Invoke Locally
+```bash
+
+```

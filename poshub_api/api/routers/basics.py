@@ -1,5 +1,7 @@
 from fastapi import APIRouter, status
 
+from poshub_api.shared.utils import log_api_key
+
 router = APIRouter(tags=["basics"])
 
 
@@ -13,3 +15,9 @@ async def root():
 async def health():
     """Health check endpoint."""
     return {"status": "ok"}
+
+
+@router.get("/debug/ssm")
+def ssm():
+    """Debug endpoint to verify ssm access"""
+    return {"api_key": log_api_key()}
