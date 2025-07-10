@@ -180,13 +180,58 @@ Included tools:
 
 MIT – see `LICENSE` file.
 
-## SAM Build
+## Install dependencies
+
+```bash
+# forced x86_64 architecture to avoid mismatch during dependencies installation
+docker run --rm \                                                        
+  -v $(pwd):/var/task \
+  -w /var/task \
+  public.ecr.aws/sam/build-python3.12:latest-x86_64 \
+  /bin/sh -c "pip install -r requirements.txt -t layer/python --no-cache-dir --platform manylinux2014_x86_64 --only-binary=:all:"
+cd layer && zip -r9 ../layer.zip python && cd .. # generate zip
+```
+
+## Build functions within an AWS Lambda-like container
+
+```bash
+sam build --use-container -t sam-min.yaml --cached 
+```
 
 ```bash
 sam build --template-file sam-min.yaml 
 ```
 
-## SAM Invoke Locally
-```bash
+## Invoke Lambda function locally using an event
 
+```bash
+sam local invoke --container-host 127.0.0.1 -t sam-min.yaml -e event.json
+```
+
+## SAM Deploy
+```bash
+sam deploy --stack-name poshub-dev-api # create an api gateway for our app
+```
+
+## Publish FastApiLayer (lambda function dependencies)
+
+```bash
+ismailabdelouahab@Ismails-MacBook-Pro poshub-api % aws lambda publish-layer-version \                     
+  --layer-name SimpleFastApiLayer \     
+  --zip-file fileb://layer.zip \
+  --compatible-runtimes python3.12 \ 
+  --region eu-north-1 
+```
+
+## Create AWS Lambda Function
+
+```bash
+ismailabdelouahab@Ismails-MacBook-Pro poshub-api % aws lambda create-function \                           
+  --function-name PosHubFunctionManual \
+  --runtime python3.12 \
+  --handler poshub_api.main.handler \
+  --zip-file fileb://lambda.zip \
+  --role arn:aws:iam::471448382724:role/poshub-lambda-role \
+  --layers arn:aws:lambda:eu-north-1:471448382724:layer:SimpleFastApiLayer:5 \
+  --region eu-north-1
 ```
