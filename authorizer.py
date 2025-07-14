@@ -55,7 +55,7 @@ def lambda_handler(event, context):
             },
             "context": {
                 "user": decoded.get("sub", "user"),
-                "scope": decoded.get("scopes", ""),
+                "scope": ",".join(decoded.get("scopes", [])),
             },
         }
     else:

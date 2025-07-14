@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, StrictFloat, StrictStr
 
 class OrderIn(BaseModel):
     customer_name: Annotated[StrictStr, Field(alias="nom_client", max_length=128)]
-    total_amount: Annotated[StrictFloat, Field(alias="montant", gt=0)]
+    total_amount: Annotated[StrictFloat, Field(alias="montant")]
     currency: Annotated[StrictStr, Field(alias="devise", pattern="^[A-Z]{3}$")]
 
 

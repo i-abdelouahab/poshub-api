@@ -11,7 +11,7 @@ Globals:
     Environment:
       Variables:
         STAGE: !Ref Stage
-        LOG_LEVEL: !Ref LogLevel
+        LOG_LEVEL: INFO
         API_KEY_PARAM: /pos/api-key
 
 Parameters:
@@ -19,12 +19,6 @@ Parameters:
     Type: String
     Default: dev
     Description: Deployment stage
-
-  LogLevel:
-    Type: String
-    Default: INFO
-    AllowedValues: [ DEBUG, INFO, WARNING, ERROR, CRITICAL ]
-    Description: Log level for Lambda functions
 
 Resources:
 
@@ -52,11 +46,42 @@ Resources:
       Environment:
         Variables:
           JWT_SECRET_PARAM: /pos/jwt-secret
+          QUEUE_URL_PARAM: /pos/queue-url
       Policies:
         - SSMParameterReadPolicy:
             ParameterName: /pos/api-key
         - SSMParameterReadPolicy:
             ParameterName: /pos/jwt-secret
+        - SSMParameterReadPolicy:
+            ParameterName: /pos/queue-url
+
+  # Order processor function
+  OrderProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: order_processor
+      Handler: order_processor.lambda_handler
+      Runtime: python3.12
+      CodeUri: order_processor.zip
+      Layers:
+        - !Ref FastApiLayer
+      Role: arn:aws:iam::471448382724:role/poshub-app-sqs-OrderProcessorFunctionRole-fqzS00JdnUhg
+      Events:
+        SQSTrigger:
+          Type: SQS
+          Properties:
+            Queue: arn:aws:sqs:eu-north-1:471448382724:poshub-orders-dev
+            BatchSize: 10
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sqs:ReceiveMessage
+                - sqs:DeleteMessage
+                - sqs:GetQueueAttributes
+              Resource: arn:aws:sqs:eu-north-1:471448382724:poshub-orders-dev
+
+
 
   # Authorizer function
   AuthorizerFunction:
@@ -103,7 +128,7 @@ Resources:
       FunctionName: !Ref OrderApiFunction
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
-      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PoshubRestApi}/*/*/*
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PoshubRestApi}/${Stage}/*
 
 
   ### REST API
