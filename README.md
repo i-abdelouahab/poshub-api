@@ -210,7 +210,10 @@ sam local invoke --container-host 127.0.0.1 -t sam-min.yaml -e event.json
 
 ## SAM Deploy
 ```bash
-sam deploy --stack-name poshub-dev-api # create an api gateway for our app
+sam deploy \
+  --stack-name poshub-api-stack-dev \
+  --capabilities CAPABILITY_IAM \
+  --region eu-north-1
 ```
 
 ## Publish FastApiLayer (lambda function dependencies)
@@ -234,4 +237,13 @@ ismailabdelouahab@Ismails-MacBook-Pro poshub-api % aws lambda create-function \
   --role arn:aws:iam::471448382724:role/poshub-lambda-role \
   --layers arn:aws:lambda:eu-north-1:471448382724:layer:SimpleFastApiLayer:5 \
   --region eu-north-1
+```
+
+## Store JWT Secret Key in SSM
+
+```bash
+aws ssm put-parameter \                                                        
+  --name /pos/jwt-secret \
+  --value "your-strong-secret-key" \
+  --type SecureString 
 ```

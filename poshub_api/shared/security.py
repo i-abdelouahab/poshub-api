@@ -3,7 +3,7 @@ from typing import List, Optional
 import jwt
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jwt.exceptions import JWTDecodeError
+from jwt import DecodeError
 from pydantic.v1 import BaseSettings
 
 from poshub_api.shared.exceptions import AuthError, ScopeError
@@ -45,7 +45,7 @@ def validate_token(
             options={"verify_exp": True},
         )
         return payload
-    except JWTDecodeError as e:
+    except DecodeError as e:
         raise AuthError(f"Invalid token: {str(e)}")
 
 

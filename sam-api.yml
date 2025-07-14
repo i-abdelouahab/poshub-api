@@ -1,0 +1,258 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Poshub REST API Template
+
+Globals:
+  Function:
+    Timeout: 30
+    Runtime: python3.12
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        STAGE: !Ref Stage
+        LOG_LEVEL: !Ref LogLevel
+        API_KEY_PARAM: /pos/api-key
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    Description: Deployment stage
+
+  LogLevel:
+    Type: String
+    Default: INFO
+    AllowedValues: [ DEBUG, INFO, WARNING, ERROR, CRITICAL ]
+    Description: Log level for Lambda functions
+
+Resources:
+
+  ### Lambda Layer
+  FastApiLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: poshub-deps
+      Description: FastAPI dependencies
+      ContentUri: layer/
+      CompatibleRuntimes:
+        - python3.12
+      RetentionPolicy: Retain
+
+  ### Lambda Function
+  OrderApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: OrderApiFunction
+      Handler: poshub_api.main.handler
+      CodeUri: lambda.zip
+      Layers:
+        - !Ref FastApiLayer
+      Role: arn:aws:iam::471448382724:role/poshub-lambda-role
+      Environment:
+        Variables:
+          JWT_SECRET_PARAM: /pos/jwt-secret
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: /pos/api-key
+        - SSMParameterReadPolicy:
+            ParameterName: /pos/jwt-secret
+
+  # Authorizer function
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: JWTAuthorizerFunction
+      Handler: authorizer.lambda_handler  # assuming it's authorizer.py with def lambda_handler(...)
+      Runtime: python3.12
+      CodeUri: authorizer.zip
+      Layers:
+        - !Ref FastApiLayer
+      Role: arn:aws:iam::471448382724:role/poshub-lambda-role  # OR use a separate minimal role
+      Environment:
+        Variables:
+          JWT_SECRET_PARAM: /pos/jwt-secret
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: /pos/jwt-secret
+
+  # API Gateway Authorizer
+  JWTAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: JWTAuthorizer
+      Type: TOKEN
+      IdentitySource: method.request.header.Authorization
+      RestApiId: !Ref PoshubRestApi
+      AuthorizerUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthorizerFunction.Arn}/invocations
+
+  AuthorizerInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AuthorizerFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PoshubRestApi}/authorizers/*
+
+
+
+  # Add permission to invoke lambda from api gateway
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref OrderApiFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PoshubRestApi}/*/*/*
+
+
+  ### REST API
+  PoshubRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: poshub-api
+      Description: Poshub REST API
+      EndpointConfiguration:
+        Types: [REGIONAL]
+
+  ### Resource /orders
+  OrdersResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt PoshubRestApi.RootResourceId
+      PathPart: orders
+      RestApiId: !Ref PoshubRestApi
+
+  ### Method POST /orders
+  OrdersMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: POST
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JWTAuthorizer
+      ResourceId: !Ref OrdersResource
+      RestApiId: !Ref PoshubRestApi
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OrderApiFunction.Arn}/invocations
+
+  OrdersAllResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref OrdersResource
+      PathPart: all
+      RestApiId: !Ref PoshubRestApi
+
+  # GET orders/all
+  OrdersAllMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: GET
+      AuthorizationType: NONE
+      ResourceId: !Ref OrdersAllResource
+      RestApiId: !Ref PoshubRestApi
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OrderApiFunction.Arn}/invocations
+
+  # GET orders/{id}
+  OrdersIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref OrdersResource
+      PathPart: "{id}"
+      RestApiId: !Ref PoshubRestApi
+
+  OrdersIdMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: GET
+      AuthorizationType: NONE
+      ResourceId: !Ref OrdersIdResource
+      RestApiId: !Ref PoshubRestApi
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OrderApiFunction.Arn}/invocations
+
+  # External api resource
+  ExternalDemoResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt PoshubRestApi.RootResourceId
+      PathPart: external-demo
+      RestApiId: !Ref PoshubRestApi
+
+  # GET /external-demo
+  ExternalDemoMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: GET
+      AuthorizationType: NONE
+      ResourceId: !Ref ExternalDemoResource
+      RestApiId: !Ref PoshubRestApi
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OrderApiFunction.Arn}/invocations
+
+  ### Resource /health
+  HealthResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt PoshubRestApi.RootResourceId
+      PathPart: health
+      RestApiId: !Ref PoshubRestApi
+
+  ### GET /health
+  HealthMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      HttpMethod: GET
+      AuthorizationType: NONE
+      ResourceId: !Ref HealthResource
+      RestApiId: !Ref PoshubRestApi
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OrderApiFunction.Arn}/invocations
+
+  ### Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - OrdersMethod
+      - HealthMethod
+      - ExternalDemoMethod
+      - OrdersAllMethod
+      - OrdersIdMethod
+
+    Properties:
+      RestApiId: !Ref PoshubRestApi
+      Description: "API deployment for dev"
+
+  ### Stage with MethodSettings
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      DeploymentId: !Ref ApiDeployment
+      RestApiId: !Ref PoshubRestApi
+      StageName: !Ref Stage
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          LoggingLevel: INFO
+          MetricsEnabled: true
+          ThrottlingBurstLimit: 100
+          ThrottlingRateLimit: 50
+
+
+Outputs:
+  RestApiUrl:
+    Description: API URL
+    Value: !Sub "https://${PoshubRestApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
+  FunctionArn:
+    Description: Lambda function
+    Value: !GetAtt OrderApiFunction.Arn

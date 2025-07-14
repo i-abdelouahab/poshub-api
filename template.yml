@@ -1,0 +1,212 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SAM template for Poshub REST API with security, usage plan, CORS, and throttling
+
+Globals:
+  Function:
+    Timeout: 30
+    Runtime: python3.12
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        STAGE: !Ref Stage
+        LOG_LEVEL: INFO
+        API_KEY_PARAM: /pos/api-key
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    Description: Deployment stage (dev/staging/prod)
+
+Resources:
+
+  ### Lambda Function
+  PosHubFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: PosHubFunction
+      Handler: poshub_api.main.handler
+      CodeUri: .
+      Layers:
+        - !Ref FastApiLayer
+      Role: arn:aws:iam::471448382724:role/poshub-lambda-role
+      Policies:
+        - SSMParameterReadPolicy:
+            ParameterName: /pos/api-key
+
+  ### FastAPI Layer
+  FastApiLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: poshub-deps
+      Description: Layer for FastAPI dependencies
+      ContentUri: layer/
+      CompatibleRuntimes:
+        - python3.12
+      RetentionPolicy: Retain
+
+  ### REST API Gateway
+  PosHubRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: poshub-api
+      EndpointConfiguration:
+        Types: [REGIONAL]
+
+  ### JWT Authorizer (Custom)
+  JwtAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: JwtAuthorizer
+      Type: TOKEN
+      RestApiId: !Ref PosHubRestApi
+      IdentitySource: method.request.header.Authorization
+      AuthorizerUri: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:jwt-authorizer/invocations
+
+  ### Resource: /orders
+  OrdersResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref PosHubRestApi
+      ParentId:
+        Fn::GetAtt: [PosHubRestApi, RootResourceId]
+      PathPart: orders
+
+  ### ANY /orders
+  OrdersMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref PosHubRestApi
+      ResourceId: !Ref OrdersResource
+      HttpMethod: ANY
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref JwtAuthorizer
+      ApiKeyRequired: true
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PosHubFunction.Arn}/invocations
+
+  ### Resource: /health
+  HealthResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref PosHubRestApi
+      ParentId:
+        Fn::GetAtt: [PosHubRestApi, RootResourceId]
+      PathPart: health
+
+  ### GET /health with throttling
+  HealthMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref PosHubRestApi
+      ResourceId: !Ref HealthResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PosHubFunction.Arn}/invocations
+
+  ### CORS Preflight OPTIONS /orders
+  OrdersOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref PosHubRestApi
+      ResourceId: !Ref OrdersResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  ### Lambda Invoke Permission
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt PosHubFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PosHubRestApi}/*/*
+
+  ### Deployment + Stage
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: OrdersMethod
+    Properties:
+      RestApiId: !Ref PoshubRestApi
+      Description: "Deployment for dev stage"
+
+    DevStage:
+      Type: AWS::ApiGateway::Stage
+      Properties:
+        DeploymentId: !Ref ApiDeployment
+        RestApiId: !Ref PoshubRestApi
+        StageName: dev
+        MethodSettings:
+          - ResourcePath: "/*"
+            HttpMethod: "*"
+            LoggingLevel: INFO
+            MetricsEnabled: true
+
+  ### API Key
+  PosHubApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    Properties:
+      Name: poshub-dev-key
+      Enabled: true
+      StageKeys:
+        - RestApiId: !Ref PosHubRestApi
+          StageName: !Ref Stage
+
+  ### Usage Plan
+  PosHubUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: poshub-dev-plan
+      ApiStages:
+        - ApiId: !Ref PosHubRestApi
+          Stage: !Ref Stage
+      Throttle:
+        RateLimit: 10
+        BurstLimit: 10
+      Quota:
+        Limit: 1000
+        Period: MONTH
+
+  ### Usage Plan Key Binding
+  UsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref PosHubApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref PosHubUsagePlan
+
+Outputs:
+  ApiEndpoint:
+    Description: "API Gateway REST endpoint"
+    Value: !Sub "https://${PosHubRestApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
+  LambdaFunction:
+    Description: "Lambda Function ARN"
+    Value: !GetAtt PosHubFunction.Arn
+  LayerVersionArn:
+    Description: "FastAPI Layer Version ARN"
+    Value: !Ref FastApiLayer
